@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마진 계산기</title>
+  <!-- 6단계: 디자인(옷)은 style.css 파일로 분리했어요 -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>마진 계산기</h1>
+    <p>목표 마진율을 남기려면 얼마에 팔아야 하는지 계산해요.</p>
+  </header>
+
+  <!-- ===== 입력 카드 1: 원 단위 ===== -->
+  <section class="card">
+    <h2>비용</h2>
+    <label>원가
+      <div class="input-wrap"><input type="number" id="cost" placeholder="10000"><span class="unit">원</span></div>
+    </label>
+    <label>배송비
+      <div class="input-wrap"><input type="number" id="shipping" placeholder="3000"><span class="unit">원</span></div>
+    </label>
+    <label>기타비용 (포장비, 쿠폰, 할인 등)
+      <div class="input-wrap"><input type="number" id="etc" placeholder="500"><span class="unit">원</span></div>
+    </label>
+  </section>
+
+  <!-- ===== 입력 카드 2: % 단위 (모두 판매가 기준) ===== -->
+  <section class="card">
+    <h2>비율 <small>판매가 기준</small></h2>
+    <label>수수료율
+      <div class="input-wrap"><input type="number" id="fee" placeholder="10"><span class="unit">%</span></div>
+    </label>
+    <label>CS 비율
+      <div class="input-wrap"><input type="number" id="cs" placeholder="3"><span class="unit">%</span></div>
+    </label>
+    <label>광고비율
+      <div class="input-wrap"><input type="number" id="ad" placeholder="10"><span class="unit">%</span></div>
+    </label>
+    <label>목표 마진율
+      <div class="input-wrap"><input type="number" id="margin" placeholder="20"><span class="unit">%</span></div>
+    </label>
+  </section>
+
+  <!-- ===== 입력 카드 3: 광고 손익 분석 (선택) ===== -->
+  <section class="card">
+    <h2>광고 손익 분석 <small>선택</small></h2>
+    <label>월 광고비 총액
+      <div class="input-wrap"><input type="number" id="adTotal" placeholder="1000000"><span class="unit">원</span></div>
+    </label>
+  </section>
+
+  <!-- 새 상품 계산할 때 쓰는 초기화 버튼 -->
+  <button id="clearBtn" onclick="clearInputs()">입력값 모두 지우기</button>
+
+  <!-- ===== 결과 카드 ===== -->
+  <section class="card result-card">
+    <h2>결과</h2>
+    <p id="message"></p>  <!-- 문지기 안내 문구가 나오는 자리 -->
+    <div id="result">
+      <div class="price-box">
+        <span>추천 판매가</span>
+        <strong id="price">-</strong>
+      </div>
+      <div class="row"><span>건당 광고비</span><strong id="adCost">-</strong></div>
+      <div class="row"><span>순마진 <small>VAT <span id="vat">-</span></small></span><strong id="profit">-</strong></div>
+      <div class="row"><span>부가세 내고 실제 남는 돈</span><strong id="afterVat">-</strong></div>
+
+      <!-- 광고 손익 구간 (월 광고비를 넣었을 때만 보임) -->
+      <div id="adResult">
+        <h3>📢 광고 손익 구간 <small id="adBase"></small></h3>
+        <div class="row loss"><span>🔴 적자</span><strong id="lossRange">-</strong></div>
+        <div class="row low"><span>🟠 흑자 / 목표 미달</span><strong id="lowRange">-</strong></div>
+        <div class="row goal"><span>🟢 목표 마진 달성</span><strong id="goalRange">-</strong></div>
+        <div class="row"><span>손익분기 ROAS</span><strong id="roas">-</strong></div>
+      </div>
+
+      <!-- 7단계: 지금 결과를 상품명과 함께 저장 -->
+      <div class="save-box">
+        <div class="input-wrap"><input type="text" id="itemName" placeholder="상품명 (예: 사과 대과)"></div>
+        <button id="saveBtn" onclick="saveResult()">이 결과 저장</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 7단계: 저장된 계산 목록 ===== -->
+  <section class="card">
+    <h2>📋 저장된 계산 <small id="savedCount"></small></h2>
+    <p id="savedMsg"></p>
+    <p class="hint" id="savedHint">상품명을 누르면 그때 입력값을 다시 불러와요.</p>
+    <table id="savedTable">
+      <thead>
+        <tr><th>상품명</th><th>원가</th><th>판매가</th><th>순마진</th><th>광고비</th><th></th></tr>
+      </thead>
+      <tbody id="savedBody"></tbody>
+    </table>
+    <p class="hint" id="savedEmpty">아직 저장된 계산이 없어요.</p>
+    <button id="excelBtn" onclick="downloadExcel()">엑셀로 내려받기</button>
+  </section>
+
+</div>
+
+  <script>
+    // 7단계: 가장 최근 계산 결과를 담아두는 메모지 (저장 버튼이 이걸 가져가요)
+    let lastResult = null;
+
+    // 입력 칸에 숫자를 넣을 때마다 실행되는 계산 함수
+    function calculate() {
+      // ① 입력: 칸에 적힌 값을 숫자로 가져오기 (빈 칸은 0)
+      const cost     = Number(document.getElementById('cost').value);
+      const shipping = Number(document.getElementById('shipping').value);
+      const etc      = Number(document.getElementById('etc').value);
+      const fee      = Number(document.getElementById('fee').value);
+      const cs       = Number(document.getElementById('cs').value);
+      const ad       = Number(document.getElementById('ad').value);
+      const margin   = Number(document.getElementById('margin').value);
+      const adTotal  = Number(document.getElementById('adTotal').value);
+
+      // ★ 3단계: 문지기 검사 (계산하기 전에 이상한 값 걸러내기)
+      const totalPercent = Math.round((fee + cs + ad + margin) * 10) / 10; // % 항목 합계
+
+      // 규칙 ①: 원가나 목표 마진율이 비어 있으면 멈춤
+      if (document.getElementById('cost').value === '' ||
+          document.getElementById('margin').value === '') {
+        stop('원가와 목표 마진율을 입력해 주세요.');
+        return;
+      }
+      // 규칙 ②: 음수가 하나라도 있으면 멈춤
+      if (cost < 0 || shipping < 0 || etc < 0 || fee < 0 || cs < 0 || ad < 0 || margin < 0 || adTotal < 0) {
+        stop('음수는 입력할 수 없어요.');
+        return;
+      }
+      // 규칙 ③: % 합계가 100% 이상이면 멈춤
+      if (totalPercent >= 100) {
+        stop('수수료+CS+광고+마진 합계가 100% 이상이라 판매가를 계산할 수 없어요. (현재 ' + totalPercent + '%)');
+        return;
+      }
+
+      // ② 처리: 공식으로 계산하기
+      const totalWon  = cost + shipping + etc;                 // 원 단위 비용 합계
+      const costRate  = (fee + cs + ad) / 100;                 // 판매가에서 떼어가는 비율
+      const rawPrice  = totalWon / (1 - costRate - margin / 100); // 공식 그대로 나온 판매가
+      const price     = Math.round(rawPrice);                  // 1원 단위로 반올림
+      const profit    = price - totalWon - price * costRate;   // 판매가 기준 순마진
+      const vat       = profit / 11;                           // 부가세 (순마진 ÷ 11)
+      const afterVat  = profit - vat;                          // 부가세 내고 남는 돈
+      const adCost    = price * ad / 100;                      // 1개 팔 때 드는 광고비
+
+      // ③ 출력: 결과 칸에 보여주기
+      document.getElementById('price').textContent    = won(price);
+      document.getElementById('profit').textContent   = won(profit);
+      document.getElementById('vat').textContent      = won(vat);
+      document.getElementById('afterVat').textContent = won(afterVat);
+      document.getElementById('adCost').textContent   = won(adCost);
+      document.getElementById('result').style.display = 'block'; // 결과 보이기
+
+      // 규칙 ④: % 합계가 80~99%면 결과는 보여주되 경고
+      if (totalPercent >= 80) {
+        say('비율 합계가 ' + totalPercent + '%로 높아 판매가가 크게 올라가요. 확인해 보세요.', 'warning');
+      } else {
+        say('', '');  // 문제없으면 안내 문구 지우기
+      }
+
+      // ★ 4단계: 광고 손익 구간 계산
+      const zones = showAdZones(adTotal, price, profit, adCost);
+
+      // ★ 7단계: 저장할 수 있게 결과를 메모지에 적어두기
+      lastResult = {
+        price: price, adCost: adCost, profit: profit, vat: vat, afterVat: afterVat,
+        adTotal: adTotal, lossMax: zones.lossMax, goalMin: zones.goalMin, roas: zones.roas
+      };
+    }
+
+    // 월 광고비 기준으로 적자 / 목표 미달 / 목표 달성 구간을 판매 개수로 보여주는 함수
+    function showAdZones(adTotal, price, profit, adCost) {
+      const box = document.getElementById('adResult');
+
+      // 월 광고비가 비어 있거나 0이면 이 구역은 숨김
+      if (adTotal === 0) {
+        box.style.display = 'none';
+        return {};  // 구간 정보 없음
+      }
+      box.style.display = 'block';
+      document.getElementById('adBase').textContent = '(월 광고비 ' + won(adTotal) + ' 기준)';
+
+      // 광고비 쓰기 전 개당 남는 돈 = 순마진 + 건당 광고비 예산
+      const perUnit = profit + adCost;
+
+      // 개당 남는 돈이 없으면 광고비를 회수할 방법이 없음
+      if (perUnit <= 0) {
+        document.getElementById('lossRange').textContent = '개당 남는 돈이 없어 광고비를 회수할 수 없어요';
+        document.getElementById('lowRange').textContent  = '-';
+        document.getElementById('goalRange').textContent = '-';
+        document.getElementById('roas').textContent      = '-';
+        return {};  // 구간 정보 없음
+      }
+
+      // 적자를 면하는 최소 판매 개수 = 월 광고비 ÷ 개당 남는 돈 (올림)
+      const breakEven = Math.ceil(adTotal / perUnit);
+      document.getElementById('lossRange').textContent =
+        breakEven <= 1 ? '없음' : count(breakEven - 1) + ' 이하';
+
+      // 목표 마진을 지키는 판매 개수 = 월 광고비 ÷ 건당 광고비 예산 (올림)
+      let goal = null;
+      if (adCost > 0) {
+        goal = Math.ceil(adTotal / adCost);
+        document.getElementById('lowRange').textContent =
+          goal > breakEven ? count(breakEven) + ' ~ ' + count(goal - 1) : '없음';
+        document.getElementById('goalRange').textContent = count(goal) + ' 이상';
+      } else {
+        document.getElementById('lowRange').textContent  = count(breakEven) + ' 이상';
+        document.getElementById('goalRange').textContent = '광고비율을 입력하면 계산돼요';
+      }
+
+      // 손익분기 ROAS = 판매가 ÷ 개당 남는 돈 × 100
+      const roas = Math.round(price / perUnit * 100);
+      document.getElementById('roas').textContent = roas + '%';
+
+      // 7단계: 엑셀 저장용으로 구간 숫자를 돌려주기
+      return { lossMax: breakEven - 1, goalMin: goal, roas: roas };
+    }
+
+    // 숫자를 "1,234개"처럼 보기 좋게 바꿔주는 도우미 함수
+    function count(n) {
+      return n.toLocaleString('ko-KR') + '개';
+    }
+
+    // 문지기 도우미 1: 안내 문구를 띄우는 함수
+    function say(text, type) {
+      const box = document.getElementById('message');
+      box.textContent = text;
+      box.className = type;
+    }
+
+    // 문지기 도우미 2: 빨간 안내를 띄우고 결과는 숨기는 함수
+    function stop(text) {
+      say(text, 'error');
+      document.getElementById('result').style.display = 'none';
+      lastResult = null;  // 계산 불가 상태면 저장할 결과도 없음
+    }
+
+    // 실수 방지 도우미: 버튼을 3초 안에 두 번 눌러야 action을 실행
+    // (지우기 버튼, 목록 삭제 버튼에서 함께 써요)
+    function twoTap(btn, confirmText, action) {
+      if (btn.dataset.ready === 'yes') {           // 두 번째 누름 → 실행
+        btn.dataset.ready = '';
+        btn.textContent = btn.dataset.original;
+        btn.classList.remove('danger');
+        action();
+        return;
+      }
+      btn.dataset.ready = 'yes';                   // 첫 번째 누름 → 확인 요청
+      btn.dataset.original = btn.textContent;
+      btn.textContent = confirmText;
+      btn.classList.add('danger');
+      setTimeout(function () {                     // 3초 지나면 원래대로
+        if (btn.dataset.ready === 'yes') {
+          btn.dataset.ready = '';
+          btn.textContent = btn.dataset.original;
+          btn.classList.remove('danger');
+        }
+      }, 3000);
+    }
+
+    // 숫자를 "18,580원"처럼 보기 좋게 바꿔주는 도우미 함수
+    function won(n) {
+      return Math.round(n).toLocaleString('ko-KR') + '원';
+    }
+
+    // ★ 5단계: 브라우저 사물함(localStorage)에 입력값 보관하기
+    const SAVE_KEY = 'margin-calc-inputs';          // 사물함 번호표
+    const inputs = document.querySelectorAll('input'); // 화면의 모든 입력 칸
+
+    // 사물함에 넣기: 모든 칸의 값을 모아서 저장
+    function saveInputs() {
+      const data = {};
+      inputs.forEach(function (box) { data[box.id] = box.value; });
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) {}
+    }
+
+    // 사물함에서 꺼내기: 저장된 값이 있으면 칸에 다시 채우기
+    function loadInputs() {
+      try {
+        const data = JSON.parse(localStorage.getItem(SAVE_KEY));
+        if (data) {
+          inputs.forEach(function (box) {
+            if (data[box.id] !== undefined) box.value = data[box.id];
+          });
+        }
+      } catch (e) {}
+    }
+
+    // 사물함 비우기: 두 번 눌러야 지워지게 (twoTap 도우미 사용)
+    // ※ 저장된 계산 목록은 지우지 않아요. 지금 입력칸만 비워요.
+    function clearInputs() {
+      twoTap(document.getElementById('clearBtn'), '한 번 더 누르면 모두 지워져요', function () {
+        inputs.forEach(function (box) { box.value = ''; });
+        try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+        calculate();
+      });
+    }
+
+    // 2단계 센서 (5단계에서 업그레이드)
+    // 칸에 입력될 때마다 → 계산하고(calculate) + 사물함에 넣어라(saveInputs)
+    inputs.forEach(function (box) {
+      box.addEventListener('input', function () {
+        calculate();
+        saveInputs();
+      });
+    });
+
+    // 페이지를 처음 열 때: 사물함에서 꺼내서 채운 뒤 → 한 번 계산
+    loadInputs();
+    calculate();
+  </script>
+
+  <!-- 7단계: 저장 목록 + 엑셀 내려받기 기능은 별도 파일로 분리 -->
+  <script src="saved.js"></script>
+</body>
+</html>
